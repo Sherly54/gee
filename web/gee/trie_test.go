@@ -1,37 +1,11 @@
 package gee
 
 import (
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 )
-
-// 测试parsePattern函数（解析路由模式为路径片段）
-func TestParsePattern(t *testing.T) {
-	tests := []struct {
-		name    string
-		pattern string
-		want    []string
-	}{
-		{"empty pattern", "", []string{}},
-		{"root pattern", "/", []string{}},
-		{"static pattern", "/user/list", []string{"user", "list"}},
-		{"param pattern", "/user/:name/detail", []string{"user", ":name", "detail"}},
-		{"wildcard pattern (single *)", "/static/*filepath", []string{"static", "*filepath"}},
-		{"wildcard with suffix (truncated)", "/static/*filepath/css/main.css", []string{"static", "*filepath"}},
-		{"wildcard at root", "/*filepath", []string{"*filepath"}},
-		{"mixed pattern", "/api/v1/:id/*action", []string{"api", "v1", ":id", "*action"}},
-		{"multiple wildcards (second * truncated)", "/static/*path/*file", []string{"static", "*path"}},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := parsePattern(tt.pattern)
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("parsePattern(%q) = %v, expected %v", tt.pattern, got, tt.want)
-			}
-		})
-	}
-}
 
 // 测试节点基本结构
 func TestNode_String(t *testing.T) {
@@ -221,6 +195,13 @@ func TestNode_getOrCreateChild(t *testing.T) {
 	if wildChild2 != wildChild {
 		t.Error("Should return existing wildcard child node")
 	}
+}
+
+// 测试参数子节点冲突
+func TestNode_getOrCreateChild_ParamConflict(t *testing.T) {
+	root := &node{}
+	// 先创建一个参数子节点
+	root.getOrCreateChild(":name")
 
 	// 测试参数子节点冲突
 	defer func() {
@@ -230,4 +211,34 @@ func TestNode_getOrCreateChild(t *testing.T) {
 	}()
 
 	root.getOrCreateChild(":age") // 不同参数名，应panic
+}
+
+// 测试getOrCreateChild方法中参数命名检查
+func TestNode_getOrCreateChild_ParamNameValidation(t *testing.T) {
+	root := &node{}
+
+	// 测试空参数名（只有冒号）
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Expected panic for empty param name, but none occurred")
+		} else if !strings.Contains(fmt.Sprint(r), "Not Name For Param") {
+			t.Errorf("Expected 'Not Name For Param' error, got: %v", r)
+		}
+	}()
+	root.getOrCreateChild(":") // 空参数名，应panic
+}
+
+// 测试getOrCreateChild方法中通配符命名检查
+func TestNode_getOrCreateChild_WildcardNameValidation(t *testing.T) {
+	root := &node{}
+
+	// 测试空通配符名（只有星号）
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("Expected panic for empty wildcard name, but none occurred")
+		} else if !strings.Contains(fmt.Sprint(r), "Not Name For Wildcard") {
+			t.Errorf("Expected 'Not Name For Wildcard' error, got: %v", r)
+		}
+	}()
+	root.getOrCreateChild("*") // 空通配符名，应panic
 }

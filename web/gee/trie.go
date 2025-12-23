@@ -5,6 +5,7 @@ import (
 	"strings"
 )
 
+// todo: recognize same param names
 type node struct {
 	// uri
 	pattern string
@@ -14,22 +15,6 @@ type node struct {
 	static   map[string]*node
 	param    *node
 	wildcard *node
-}
-
-// Only one * is allowed
-func parsePattern(pattern string) []string {
-	vs := strings.Split(pattern, "/")
-
-	parts := make([]string, 0)
-	for _, item := range vs {
-		if item != "" {
-			parts = append(parts, item)
-			if item[0] == '*' {
-				break
-			}
-		}
-	}
-	return parts
 }
 
 func hasPattern(root *node, pattern string, parts []string) bool {
@@ -70,11 +55,53 @@ func (n *node) insert(pattern string, parts []string, height int) {
 	child.insert(pattern, parts, height+1)
 }
 
+func (n *node) getOrCreateChild(part string) *node {
+	switch part[0] { // part != nil
+	case ':':
+		if n.param != nil {
+			if n.param.part != part {
+				panic(fmt.Sprintf("[Trie] Pattern Conflict: Part: %s, Multiple Params Child For Node %s", part, n))
+			}
+			return n.param
+		}
+		if len(part) <= 1 {
+			panic(fmt.Sprintf("[Trie] Not Name For Param, Part: %s", part))
+		}
+		n.param = &node{part: part}
+		return n.param
+	case '*': // node whose part starts with '*' must be leaf
+		if n.wildcard != nil {
+			if n.wildcard.part != part {
+				panic(fmt.Sprintf("[Trie] Pattern Conflict: Part: %s, Multiple WildCard Child For Node %s", part, n))
+			}
+			return n.wildcard
+		}
+		if len(part) <= 1 {
+			panic(fmt.Sprintf("[Trie] Not Name For Wildcard, Part: %s ", part))
+		}
+		n.wildcard = &node{part: part}
+		return n.wildcard
+	default:
+		if n.static == nil {
+			n.static = make(map[string]*node)
+		}
+		if child, ok := n.static[part]; ok {
+			return child
+		}
+		n.static[part] = &node{part: part}
+		return n.static[part]
+	}
+}
+
 func (n *node) search(parts []string, height int) *node {
-	if height == len(parts) || strings.HasPrefix(n.part, "*") { // maybe: n.part == nil
+	if height == len(parts) {
 		if n.pattern == "" {
 			return nil
 		}
+		return n
+	}
+
+	if strings.HasPrefix(n.part, "*") {
 		return n
 	}
 
@@ -93,7 +120,7 @@ func (n *node) search(parts []string, height int) *node {
 		}
 	}
 
-	if n.wildcard != nil {
+	if n.wildcard != nil { // wildcard must be leaf, no need to search
 		return n.wildcard
 	}
 
@@ -112,37 +139,5 @@ func (n *node) travel(list *([]*node)) {
 	}
 	if n.wildcard != nil {
 		n.wildcard.travel(list)
-	}
-}
-
-func (n *node) getOrCreateChild(part string) *node {
-	switch part[0] { // part != nil
-	case ':':
-		if n.param != nil {
-			if n.param.part != part {
-				panic(fmt.Sprintf("[Trie] Pattern Conflict: Part: %s, Multiple Params Child For Node %s", part, n))
-			}
-			return n.param
-		}
-		n.param = &node{part: part}
-		return n.param
-	case '*':
-		if n.wildcard != nil {
-			if n.wildcard.part != part {
-				panic(fmt.Sprintf("[Trie] Pattern Conflict: Part: %s, Multiple WildCard Child For Node %s", part, n))
-			}
-			return n.wildcard
-		}
-		n.wildcard = &node{part: part}
-		return n.wildcard
-	default:
-		if n.static == nil {
-			n.static = make(map[string]*node)
-		}
-		if child, ok := n.static[part]; ok {
-			return child
-		}
-		n.static[part] = &node{part: part}
-		return n.static[part]
 	}
 }
